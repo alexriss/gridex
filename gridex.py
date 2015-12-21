@@ -7,7 +7,7 @@ Class to read Nanonis data files (grid spectroscopy).
 The class can read binary data (.3ds) or a list of ascii files (*.dat)
 
 
-2015, Alex Riss, alexx@riss.at
+2015, Alex Riss, GPL
 
 
 Populates the dictionaries:
@@ -26,6 +26,7 @@ Caveats:
 Todo:
     - check if the rotation calculation uses the right convention (clockwise vs anticlockwise) for ASCII data
     - test with python 2.7
+    - better documentation (.i.e exmaples with better comments in the ipython example notebook), describe which data is generated
     - make smoothing and derivative options, such as in the nanonis viewers
     - have an interface to find images (based on date (+-3 days within the grid), based on other parameters (e.g. const height image, >4 Hz range in frequency shift))
     - plot STM/AFM images next to the grid
@@ -40,6 +41,7 @@ Todo maybe:
 
 from __future__ import print_function
 from __future__ import division
+import sys
 import glob
 import struct
 import copy
@@ -62,6 +64,7 @@ MASS_ELECTRON = 9.10938356e-31    # kg
 PLANCK_CONSTANT = 6.62607004e-34  # m2 kg / s
 CONV_J_EV = 6.242e18             # conversion of Joule to eV
 
+PYTHON_VERSION = sys.version_info.major
 
 class GridData(object):
     """Class to read grid date from binary or ascii files. Also fits the KPFM parabola and the exponential IZ curves. """
@@ -95,7 +98,10 @@ class GridData(object):
     def _load_spectroscopy_3ds(self,fname,long_output):
         """load spectroscopy data from a .3ds file"""
         
-        f = open(fname, encoding='utf-8', errors='ignore')
+        if PYTHON_VERSION>=3:
+            f = open(fname, encoding='utf-8', errors='ignore')
+        else:
+            f = open(fname)
         line = f.readline()
         while line:
             linestr = line.strip()
@@ -564,6 +570,7 @@ class PlotData(object):
             state = self.button_grid.value
         for p in self.plots:
             p.grid(state)
+        if PYTHON_VERSION==2: plt.draw()
             
     def _widgets_legend(self,name=None,state=False):
         """toggle legends in plots"""
@@ -572,6 +579,7 @@ class PlotData(object):
             state = self.button_legend.value
         for legend in self.plot_legends:
             legend.set_visible(state)
+        if PYTHON_VERSION==2: plt.draw()
 
     def _slider_change(self):
         """when slider changes, update markers and plot"""
@@ -586,15 +594,16 @@ class PlotData(object):
         """when a widget changes, update markers and plot"""
         self.slider_point.value = self.selected_index + 1
         self._widgets_update_vars()
-        self._widgets_marker()
+        self._widgets_marker(redraw=False)
         self._widgets_plot_change()
         
     def _widgets_plot_change(self):
         """widgets regarding plot changes, update plot"""
         self._widgets_update_vars()
         self.plot_sweep_data()
+        if PYTHON_VERSION==2: plt.draw()
         
-    def _widgets_marker(self):
+    def _widgets_marker(self, redraw=True):
         """toggle marker in plots"""
         x,y = self._index_to_length(self._index_to_indices(self.slider_point.value-1))
         w,h = self._index_to_length((1,1))
@@ -608,6 +617,7 @@ class PlotData(object):
             for p in self.plots:
                 w2 = w*2
                 self.plot_markers.append(p.add_patch(matplotlib.patches.Circle((x+w/2,y+h/2), w2, fill=True, snap=False, facecolor='#f00000',linewidth=1, edgecolor='#900000', alpha=0.33)))
+        if PYTHON_VERSION==2 and redraw: plt.draw()
             
     def _plot_onclick(self,event):
         """onclick event for plot"""
@@ -827,7 +837,7 @@ class PlotData(object):
         #gs = matplotlib.gridspec.GridSpec(num_cols,num_rows+1, width_ratios=[1]*num_rows+[0.5], hspace=0.5, wspace=0.5)
         gs = matplotlib.gridspec.GridSpec(num_cols+2,num_rows, width_ratios=[1]*num_rows, height_ratios=[1]*num_cols+[0.8]+[0.8], hspace=0.5, wspace=0.5)
         for i,channel in enumerate(channels):
-            z = [self.data_points[i]['data_headers'][channel] for i in range(len(self.data_points))]
+            z = [self.data_points[ii]['data_headers'][channel] for ii in range(len(self.data_points))]
             z = np.array(z)
             z = z.reshape(self.grid_dim[1],self.grid_dim[0])
             
