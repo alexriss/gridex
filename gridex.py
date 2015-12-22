@@ -29,6 +29,7 @@ Todo:
     - make smoothing and derivative options, such as in the nanonis viewers
     - have an interface to find images (based on date (+-3 days within the grid), based on other parameters (e.g. const height image, >4 Hz range in frequency shift))
         - plot STM/AFM images next to the grid
+    - provide easy way to plot sweep channel at specific point, e.g. dI/dV maps from point spectroscopy grids
     - unit tests
 Todo maybe:
     - switch image interpolation between 'nearest', 'bilinear', 'bicubic'
@@ -849,7 +850,8 @@ class PlotData(object):
         
         
     def plot_channels(self,channels, num_rows=3, cmap='Blues_r'):  # cmap = "RdBu"
-        """Plots a grid of several channels"""
+        """Plots a grid of several channels. The parameter num_rows specifies how many rows per line,
+        cmap is optional and specifies the colormap to use (can also be a list)"""
 
         # clean up channels that are not in the data
         channels_notfound = []
@@ -888,7 +890,11 @@ class PlotData(object):
                 plots.append(self.fig.add_subplot(gs[0,0]))
             else:
                 plots.append(self.fig.add_subplot(gs[int(np.floor(i/num_rows)),i % num_rows], sharex=plots[0], sharey=plots[0]))
-            img = plots[i].imshow(z, cmap=cmap, interpolation='nearest', origin='lower',picker=True)
+            if isinstance(cmap, (list, tuple)):
+                cmap_ = cmap[i % len(cmap)]
+            else:
+                cmap_=cmap
+            img = plots[i].imshow(z, cmap=cmap_, interpolation='nearest', origin='lower',picker=True)
             if self.axis_length:
                 plt.setp(img, extent=self.im_extent)
                 plots[i].set_xlabel("nm")
