@@ -25,11 +25,11 @@ Caveats:
     
 Todo:
     - check if the rotation calculation uses the right convention (clockwise vs anticlockwise) for ASCII data
-    - test with python 2.7
-    - better documentation (.i.e exmaples with better comments in the ipython example notebook), describe which data is generated
+    - better documentation (i.e. exmaples with better comments in the ipython example notebook), describe which data is generated
     - make smoothing and derivative options, such as in the nanonis viewers
     - have an interface to find images (based on date (+-3 days within the grid), based on other parameters (e.g. const height image, >4 Hz range in frequency shift))
-    - plot STM/AFM images next to the grid
+        - plot STM/AFM images next to the grid
+    - unit tests
 Todo maybe:
     - switch image interpolation between 'nearest', 'bilinear', 'bicubic'
     - plot grid data as a function of the x,y values, not just the point number (sort of is done for binary files)
@@ -80,15 +80,15 @@ class GridData(object):
         self.data = None           # 3-dimensional data as numpy array (first index is the number of the point, second index represents the channel, third index the index of the sweep)
 
         
-    def load_spectroscopy(self,fname,long_output=False):
-        """loads spectrscopy data, either the binary .3ds file or data from a number of .dat files"""
+    def load_spectroscopy(self,fname,long_output=False,first_file=None,last_file=None):
+        """loads spectrscopy data, either the binary .3ds file or data from a number of .dat files. The optional parameters "first_file" and "last_file" can be used to further restrict the range for .dat files (substrings of the filename will work for those)."""
         ext = fname.rsplit(".",1)[-1]
         if  ext == "3ds":
             self.__init__()
             self._load_spectroscopy_3ds(fname,long_output)
         elif ext == "dat":
             self.__init__()
-            self._load_spectroscopy_dat(fname,long_output)
+            self._load_spectroscopy_dat(fname,long_output,first_file,last_file)
         else:
             print("Error: Unknown file type \"%s\"." % ext)
             return False
@@ -187,12 +187,25 @@ class GridData(object):
         self.data = self._generate_3D_data(self.data_points)
         
         
-    def _load_spectroscopy_dat(self,fnames,long_output):
+    def _load_spectroscopy_dat(self,fnames,long_output,first_file=None,last_file=None):
         """load spectroscopy data from a .dat files, the argument fname should be a unix-style list of files, i.e. "spectroscopy_4_*.dat"."""
         
         read_somedata = False
+        if first_file:
+            first_file_found=False
+        files_read = 0
     
         for i_file,fname in enumerate(glob.glob(fnames)):
+            # first_first and last_file limits
+            if first_file and not first_file_found:
+                if first_file in fname:
+                    first_file_found=True
+                else:
+                    continue
+            if last_file:
+                if last_file in fname:
+                    break
+                
             if long_output: print("loading %s" % fname)
             f = open(fname)
             
@@ -228,28 +241,36 @@ class GridData(object):
             data = np.genfromtxt(io.BytesIO(f_data), names=names)
             data.dtype.names = names  # the genfromtxt gets rid of the "(" and ")"
             
+            if files_read>0:
+                if self.channels != data.dtype.names or self.points != data.shape[0]:
+                    print("Warning: change in data structure in file %s. Stopping to read data." % fname)
+                    break
+            else:
+                self.headers['channels'] = self.channels = data.dtype.names
+                self.headers['points'] = self.points = data.shape[0]
+            
             self.data_points.append({'data_headers': data_headers, 'data': data})
 
+            files_read += 1
             f.close()
+
             
         if not read_somedata:
             print('Error: no data read.')
             return False
         
         # important info for the headers
-        self.headers['channels'] = self.channels = data.dtype.names
-        self.headers['points'] = self.points = data.shape[0]
         self.num_data_points = self.headers['num_data_points'] = len(self.data_points)
         
         # generate 3D numpy array for faster access and slicing
         self.data = self._generate_3D_data(self.data_points)
         
-        print("%s files read." % (i_file + 1))
+        print("%s files read." % (files_read))
             
             
     def _generate_3D_data(self,data_points):
         """once the data has been read in from the files, this function generates a 3D numpy array holding all the data"""
-            
+        
         data3D = np.zeros((len(data_points), len(self.channels), self.points))
         for i_data_point in range(len(data_points)):
             for i_channel in range(len(self.channels)):
@@ -263,6 +284,15 @@ class GridData(object):
         Also extracts 'V*', 'df*', as well as the 'fit_sse' (sum of squares due to error), and 'fit_r2' (the r squared value).
         These will be added to the data_header for each point.
         Also adds the amplitude mean and standard deviation ('amplitude_mean_(m)' and 'amplitude_stddev_(m)') - if the data exists. Further the fitted line and the residuals are added to the data sweeps."""
+        
+        # some sanity checks
+        p0names = self.data_points[0]['data'].dtype.names
+        if (not 'bias_[avg]_(v)' in p0names and not 'bias_(v)' in p0names):
+            print("Error: Bias channel not found in the data. Cannot fit KPFM")
+            return False
+        if (not 'frequency_shift_[avg]_(hz)' in p0names and not 'frequency_shift_(hz)' in p0names):
+            print("Error: Frequency shift channel not found in the data. Cannot fit KPFM.")
+            return False
         
         for i,p in enumerate(self.data_points):
             if 'bias_[avg]_(v)' in p['data'].dtype.names:
@@ -322,6 +352,19 @@ class GridData(object):
         The fit then is a Bessel function of the first kind: I = I0 * exp(-2kz) * J0(2kA)
         """
         
+        # some sanity checks
+        p0names = self.data_points[0]['data'].dtype.names
+        if (not 'z_[avg]_(m)' in p0names and not 'z_(m)' in p0names):
+            print("Error: Z channel not found in the data. Cannot fit IZ.")
+            return False
+        if (not 'current_[avg]_(A)' in p0names and not 'current_(a)' in p0names):
+            print("Error: Current channel not found in the data. Cannot fit IZ.")
+            return False
+        if oscillation_correction and (not 'amplitude_[avg]_(A)' in p0names and not 'amplitude_(a)' in p0names):
+            print("Error: Amplitude channel not found in the data. Cannot fit IZ with oscillation correction.")
+            return False
+            
+            
         for i,p in enumerate(self.data_points):
             if 'z_[avg]_(m)' in p['data'].dtype.names:
                 x = p['data']['z_[avg]_(m)']
