@@ -280,7 +280,7 @@ class GridData(object):
         return data3D
         
 
-    def fit_KPFM(self):
+    def fit_KPFM(self, x_limit=[]):
         """fits the KPFM parabolas and adds 'fit_type' and 'fit_coeffs' to the data_headers.
         Also extracts 'V*', 'df*', as well as the 'fit_sse' (sum of squares due to error), and 'fit_r2' (the r squared value).
         These will be added to the data_header for each point.
@@ -316,7 +316,19 @@ class GridData(object):
                 self.data_points[i]['data_headers']['amplitude_mean_(m)'] = np.mean(p['data']['amplitude_(m)'])
                 self.data_points[i]['data_headers']['amplitude_stddev_(m)'] = np.std(p['data']['amplitude_(m)'])
                 
-            coeffs = np.polyfit(x,y,2)
+            if len(x_limit)==2:  # set limit for fits
+                x_limit_i = [ (np.abs(x-x_limit[0])).argmin() , (np.abs(x-x_limit[1])).argmin()]
+                if x_limit_i[0] > x_limit_i[1]:
+                    x_limit_i[0], x_limit_i[1] = x_limit_i[1], x_limit_i[0]
+                self.data_points[i]['data_headers']['fit_x_limit_i_start'] = x[x_limit_i[0]]
+                self.data_points[i]['data_headers']['fit_x_limit_i_end'] = x[x_limit_i[1]]
+                x_fit = x[x_limit_i[0]:x_limit_i[1]+1]
+                y_fit = y[x_limit_i[0]:x_limit_i[1]+1]
+            else:
+                x_fit = x
+                y_fit = y
+            
+            coeffs = np.polyfit(x_fit,y_fit,2)
             
             f = np.poly1d(coeffs)
             yhat = f(x)
@@ -324,6 +336,11 @@ class GridData(object):
             ssreg = np.sum((yhat-ybar)**2)
             sstot = np.sum((y - ybar)**2)
             sserr = np.sum((y - yhat)**2)
+            yhat_fit = f(x_fit)
+            ybar_fit = np.sum(y_fit)/len(y_fit)
+            ssreg_fit = np.sum((yhat_fit-ybar_fit)**2)
+            sstot_fit = np.sum((y_fit - ybar_fit)**2)
+            sserr_fit = np.sum((y_fit - yhat_fit)**2)
             
             if 'fit_frequency_shift_(hz)' in self.data_points[i]['data'].dtype.names:
                 self.data_points[i]['data']['fit_frequency_shift_(hz)'] = yhat
@@ -335,8 +352,10 @@ class GridData(object):
             self.data_points[i]['data_headers']['fit_type'] = "KPFM"
             self.data_points[i]['data_headers']['fit_coeffs'] = coeffs
 
-            self.data_points[i]['data_headers']['fit_r2'] = ssreg / sstot
-            self.data_points[i]['data_headers']['fit_sse'] = sserr
+            self.data_points[i]['data_headers']['fit_r2'] = ssreg_fit / sstot_fit
+            self.data_points[i]['data_headers']['fit_sse'] = sserr_fit
+            self.data_points[i]['data_headers']['fit_r2_fullrange'] = ssreg / sstot   # _fullrange takes the full range for error calculation (i.e. not taking into account x_limit)
+            self.data_points[i]['data_headers']['fit_sse_fullrange'] = sserr
             
             self.data_points[i]['data_headers']['v*_(v)'] = -coeffs[1]/(2*coeffs[0])
             self.data_points[i]['data_headers']['df*_(hz)'] = coeffs[2] - coeffs[1]**2/(4*coeffs[0])
@@ -366,7 +385,7 @@ class GridData(object):
             return False
             
             
-        for i,p in enumerate(self.data_points):
+        for i,p in enumerate(self.data_points, x_limit=[]):
             if 'z_[avg]_(m)' in p['data'].dtype.names:
                 x = p['data']['z_[avg]_(m)']
                 if not 'z_(m)' in p['data'].dtype.names:
@@ -390,7 +409,20 @@ class GridData(object):
                 amplitude = p['data']['amplitude_(m)']
 
             y = np.log(np.abs(y_current))
-            coeffs = np.polyfit(x,y,1)
+
+            if len(x_limit)==2:  # set limit for fits
+                x_limit_i = [ (np.abs(x-x_limit[0])).argmin() , (np.abs(x-x_limit[1])).argmin()]
+                if x_limit_i[0] > x_limit_i[1]:
+                    x_limit_i[0], x_limit_i[1] = x_limit_i[1], x_limit_i[0]
+                self.data_points[i]['data_headers']['fit_x_limit_i_start'] = x[x_limit_i[0]]
+                self.data_points[i]['data_headers']['fit_x_limit_i_end'] = x[x_limit_i[1]]
+                x_fit = x[x_limit_i[0]:x_limit_i[1]+1]
+                y_fit = y[x_limit_i[0]:x_limit_i[1]+1]
+            else:
+                x_fit = x
+                y_fit = y
+
+            coeffs = np.polyfit(x_fit,y_fit,1)
             
             f = np.poly1d(coeffs)
             yhat = f(x)
@@ -398,6 +430,11 @@ class GridData(object):
             ssreg = np.sum((yhat-ybar)**2)
             sstot = np.sum((y - ybar)**2)
             sserr = np.sum((y - yhat)**2)
+            yhat_fit = f(x_fit)
+            ybar_fit = np.sum(y_fit)/len(y_fit)
+            ssreg_fit = np.sum((yhat_fit-ybar_fit)**2)
+            sstot_fit = np.sum((y_fit - ybar_fit)**2)
+            sserr_fit = np.sum((y_fit - yhat_fit)**2)
             yhat_exp = np.exp(yhat)
             
             y_current_bar = np.sum(y_current)/len(y_current)
@@ -419,8 +456,10 @@ class GridData(object):
             self.data_points[i]['data_headers']['fit_type'] = "IZ"
             self.data_points[i]['data_headers']['fit_coeffs'] = coeffs
             
-            self.data_points[i]['data_headers']['fit_r2'] = ssreg / sstot
-            self.data_points[i]['data_headers']['fit_sse'] = sserr
+            self.data_points[i]['data_headers']['fit_r2'] = ssreg_fit / sstot_fit
+            self.data_points[i]['data_headers']['fit_sse'] = sserr_fit
+            self.data_points[i]['data_headers']['fit_r2_fullrange'] = ssreg / sstot  # _fullrange takes the full range for error calculation (i.e. not taking into account x_limit)
+            self.data_points[i]['data_headers']['fit_sse_fullrange'] = sserr
             
             self.data_points[i]['data_headers']['phi_(j)'] = coeffs[0]**2 * (PLANCK_CONSTANT/(2*np.pi))**2 / (8 * MASS_ELECTRON)
             self.data_points[i]['data_headers']['phi_(ev)'] = self.data_points[i]['data_headers']['phi_(j)'] * CONV_J_EV
@@ -834,6 +873,9 @@ class PlotData(object):
                     plots2D_.append(p)
                 plots2D_[i].plot(x, y, label=c, color=color, ls=ls, marker=m, lw=lw, ms=ms)
                 plots2D_[i].grid(False)
+                if 'fit_x_limit_i_start' in self.data_points[index]['data_headers'].keys():
+                    plots2D_[i].axvline(self.data_points[index]['data_headers']['fit_x_limit_i_start'], ls='dashed', color="#aaaaaa")
+                    plots2D_[i].axvline(self.data_points[index]['data_headers']['fit_x_limit_i_end'], ls='dashed', color="#aaaaaa")
                 
                 # make x-axis label if (i) there is no second graph, or (ii) the axis labels are different, or (iii) we are plotting the second graph
                 if not graph2 or xaxis != xaxis2 or plots2D_== self.plots2D2:
