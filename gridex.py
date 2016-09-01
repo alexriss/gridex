@@ -282,7 +282,8 @@ class GridData(object):
 
     def fit_KPFM(self, x_limit=[]):
         """fits the KPFM parabolas and adds 'fit_type' and 'fit_coeffs' to the data_headers.
-        Also extracts 'V*', 'df*', as well as the 'fit_sse' (sum of squares due to error), and 'fit_r2' (the r squared value).
+        Using the optional parameter x_limit a range can be defined where the fit is done (in x-axis units).
+        Also extracts 'V*', 'df*', as well as the 'fit_sse' (sum of squares due to error), and 'fit_r2' (the r squared value). If x_limit is specified, also fit_sse_fullrange and fit_r2_fullrange will be calculated to represent the values for the full x range.
         These will be added to the data_header for each point.
         Also adds the amplitude mean and standard deviation ('amplitude_mean_(m)' and 'amplitude_stddev_(m)') - if the data exists. Further the fitted line and the residuals are added to the data sweeps."""
         
@@ -361,9 +362,10 @@ class GridData(object):
             self.data_points[i]['data_headers']['df*_(hz)'] = coeffs[2] - coeffs[1]**2/(4*coeffs[0])
             
     
-    def fit_IZ(self, oscillation_correction=False):
+    def fit_IZ(self, oscillation_correction=False, x_limit=[]):
         """fits the IZ parabolas and adds 'fit_type' and 'fit_coeffs' to the data_headers.
         Also extracts the work function 'phi', as well as the 'fit_sse' (sum of squares due to error), and 'fit_r2' (the r squared value).
+        Using the optional parameter x_limit a range can be defined where the fit is done (in x-axis units). If x_limit is specified, also fit_sse_fullrange and fit_r2_fullrange will be calculated to represent the values for the full x range.
         These will be added to the data_header for each point.
         Also adds the amplitude mean and standard deviation ('amplitude_mean_(m)' and 'amplitude_stddev_(m)') - if the data exists.
         Further the fitted line and the residuals are added to the data sweeps.
