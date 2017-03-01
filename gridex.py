@@ -387,7 +387,7 @@ class GridData(object):
             return False
             
             
-        for i,p in enumerate(self.data_points, x_limit=[]):
+        for i,p in enumerate(self.data_points):
             if 'z_[avg]_(m)' in p['data'].dtype.names:
                 x = p['data']['z_[avg]_(m)']
                 if not 'z_(m)' in p['data'].dtype.names:
