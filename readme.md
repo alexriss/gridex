@@ -2,7 +2,7 @@
 
 Python scripts to analyze 3D grid data. It currently works for Nanonis data (in binary or ASCII file format).
 
-Fitting KPFM Δf vs. V curves, as well as IZ spectroscopy curves is implemented.
+Fitting [KPFM (Δf vs. V) curves](http://www.nature.com/nnano/journal/v7/n4/abs/nnano.2012.20.html){:target="_blank"}, as well as [IZ spectroscopy](http://www.nature.com/nmat/journal/v9/n4/abs/nmat2625.html){:target="_blank"} curves is implemented.
 
 An example output is shown here:
 
