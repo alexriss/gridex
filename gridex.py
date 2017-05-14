@@ -7,7 +7,7 @@ Class to read Nanonis data files (grid spectroscopy).
 The class can read binary data (.3ds) or a list of ascii files (*.dat)
 
 
-2015, Alex Riss, GPL
+2015-2017, Alex Riss, GPL
 
 
 Populates the dictionaries:
@@ -510,6 +510,123 @@ class GridData(object):
             print('Error: point-per point amplitude information not found, but is necessary for the IZ fit with oscillation correction.')
 
                 
+    def fit_Gaussian(self, x_channel='bias_(v)', y_channel='current_(a)', num_peaks=1, initial_params=None, initial_params_bounds=(-np.inf, np.inf), extra_offset=False, x_limit=[], **kwargs):
+        """Fits Gaussian curves into a data set.
+        Uses scipy.optimize.curve_fit. Adds 'fit_type' and 'fit_coeffs' to the data_headers.
+        Parameters:
+          - x_channel: name of channel to use for x-axis
+          - y_channel: name of channel to use for y-axis
+          - num_peaks: number of Gaussian peaks to use for fitting
+          - initial_params: list of parameters corresponding to (A, xpos, sigma) of each peak. Last parameter is y-offset, which is only used if extra_offset is True
+          - initial_params_bounds: list of lower and upper bounds for parameters to fit
+          - extra_offset: specifies whether to add an extra constant offset
+          - x_limit: tuple with lower and upper x-limit, specifies whether to restrict the fitting for a range of x_values
+          - other kwargs: will be passed to scipy.optimize.curve_fit
+          
+        Also extracts the 'fit_sse' (sum of squares due to error), and 'fit_r2' (the r squared value). If x_limit is specified, also fit_sse_fullrange and fit_r2_fullrange will be calculated to represent the values for the full x range.
+        These will be added to the data_header for each point.
+        Also adds the amplitude mean and standard deviation ('amplitude_mean_(m)' and 'amplitude_stddev_(m)') - if the data exists. Further the fitted line and the residuals are added to the data sweeps."""
+        
+        def gaussian(x,A,xpos,sigma):
+            return A*np.exp(-((x-xpos)**2/(2*sigma**2)))
+        def y_calc(x, *params):
+            #peak_params = np.array(params).reshape([-1,3])
+            y_sum = np.zeros_like(x)
+            """calculate y for a sum of gaussian peaks and an additional offset"""
+            for i in range(len(params) // 3):  # floor division
+                y_sum += gaussian(x, params[3*i+0], params[3*i+1], params[3*i+2])
+            return y_sum 
+        def y_calc_offset(x, *params):
+            return y_calc(x, *params[:-1]) + params[-1]
+
+        # some sanity checks
+        p0names = self.data_points[0]['data'].dtype.names
+        for ch in [x_channel, y_channel]:
+            if not ch in p0names:
+                print("Error: Channel '%s' not found in the data." % ch)
+                return False
+        num_extra_params = 0
+        if extra_offset: num_extra_params = 1
+        if len(initial_params) != (num_peaks * 3) + num_extra_params:
+            print("Error: Parameter initial_params does not have the right shape. Should be: %s instead of %s." % ((num_peaks * 3) + num_extra_params, len(initial_params)))
+            return False
+        if len(initial_params_bounds) != (num_peaks * 3) + num_extra_params and len(initial_params_bounds)!=2:
+            print("Error: Parameter initial_params_bounds does not have the right shape. Should be: %s instead of %s." % ((num_peaks * 3) + num_extra_params, len(initial_params_bounds)))
+            return False
+        
+        for i,p in enumerate(self.data_points):
+            x = p['data'][x_channel]
+            y = p['data'][y_channel]
+            
+            if 'amplitude_[avg]_(m)' in p['data'].dtype.names:
+                self.data_points[i]['data_headers']['amplitude_mean_(m)'] = np.mean(p['data']['amplitude_[avg]_(m)'])
+                self.data_points[i]['data_headers']['amplitude_stddev_(m)'] = np.std(p['data']['amplitude_[avg]_(m)'])
+            elif 'amplitude_(m)' in p['data'].dtype.names:
+                self.data_points[i]['data_headers']['amplitude_mean_(m)'] = np.mean(p['data']['amplitude_(m)'])
+                self.data_points[i]['data_headers']['amplitude_stddev_(m)'] = np.std(p['data']['amplitude_(m)'])
+                
+            if len(x_limit)==2:  # set limit for fits
+                x_limit_i = [ (np.abs(x-x_limit[0])).argmin() , (np.abs(x-x_limit[1])).argmin()]
+                if x_limit_i[0] > x_limit_i[1]:
+                    x_limit_i[0], x_limit_i[1] = x_limit_i[1], x_limit_i[0]
+                self.data_points[i]['data_headers']['fit_x_limit_i_start'] = x[x_limit_i[0]]
+                self.data_points[i]['data_headers']['fit_x_limit_i_end'] = x[x_limit_i[1]]
+                x_fit = x[x_limit_i[0]:x_limit_i[1]+1]
+                y_fit = y[x_limit_i[0]:x_limit_i[1]+1]
+            else:
+                x_fit = x
+                y_fit = y
+            
+            try:
+                if extra_offset:
+                    popt, pcov = scipy.optimize.curve_fit(y_calc_offset, x_fit, y_fit, p0=initial_params, bounds=initial_params_bounds, **kwargs)
+                else:
+                    popt, pcov = scipy.optimize.curve_fit(y_calc, x_fit, y_fit, p0=initial_params, bounds=initial_params_bounds, **kwargs)
+            except RuntimeError:
+                popt = initial_params
+                print("Error in curve_fit for point %d." % i)
+                
+            if extra_offset:
+                yhat = y_calc_offset(x, *popt)
+                yhat_fit = y_calc_offset(x_fit, *popt)
+            else:
+                yhat = y_calc(x, *popt)
+                yhat_fit = y_calc(x_fit, *popt)
+
+            ybar = np.sum(y)/len(y)
+            ssreg = np.sum((yhat-ybar)**2)
+            sstot = np.sum((y - ybar)**2)
+            sserr = np.sum((y - yhat)**2)
+            ybar_fit = np.sum(y_fit)/len(y_fit)
+            ssreg_fit = np.sum((yhat_fit-ybar_fit)**2)
+            sstot_fit = np.sum((y_fit - ybar_fit)**2)
+            sserr_fit = np.sum((y_fit - yhat_fit)**2)
+            
+            if 'fit_%s' % y_channel in self.data_points[i]['data'].dtype.names:
+                self.data_points[i]['data']['fit_%s' % y_channel] = yhat
+                self.data_points[i]['data']['fit_res_%s' % y_channel] = y - yhat  # residuals
+            else:
+                self.data_points[i]['data'] = recfunctions.append_fields(self.data_points[i]['data'],'fit_%s' % y_channel, yhat)
+                self.data_points[i]['data'] = recfunctions.append_fields(self.data_points[i]['data'],'fit_res_%s' % y_channel, y - yhat)  # residuals
+                
+            self.data_points[i]['data_headers']['fit_type'] = "Gaussian"
+            self.data_points[i]['data_headers']['fit_x_channel'] = x_channel
+            self.data_points[i]['data_headers']['fit_y_channel'] = y_channel
+            self.data_points[i]['data_headers']['fitted_y_channel'] = 'fit_%s' % y_channel
+            self.data_points[i]['data_headers']['fit_res_y_channel'] = 'fit_res_%s' % y_channel
+            self.data_points[i]['data_headers']['fit_coeffs'] = popt
+
+            self.data_points[i]['data_headers']['fit_r2'] = ssreg_fit / sstot_fit
+            self.data_points[i]['data_headers']['fit_sse'] = sserr_fit
+            self.data_points[i]['data_headers']['fit_r2_fullrange'] = ssreg / sstot   # _fullrange takes the full range for error calculation (i.e. not taking into account x_limit)
+            self.data_points[i]['data_headers']['fit_sse_fullrange'] = sserr
+
+            for j in range(num_peaks):
+                self.data_points[i]['data_headers']['A_%d' % j] = popt[j*3+0]
+                self.data_points[i]['data_headers']['xpos_%d' % j] = popt[j*3+1]
+                self.data_points[i]['data_headers']['sigma_%d' % j] = popt[j*3+2]
+
+
     def _string_simplify1(self,str):
         """simplifies a string (i.e. removes replaces space for "_", and makes it lowercase"""
         return str.replace(' ','_').lower()
@@ -768,6 +885,8 @@ class PlotData(object):
                 self.plot_sweep_signal = 'bias_(v)'
             elif self.data_points[0]['data_headers']['fit_type'] == 'IZ':
                 self.plot_sweep_signal = 'z_(m)'
+            elif self.data_points[0]['data_headers']['fit_type'] == 'Gaussian':
+                self.plot_sweep_signal = self.data_points[0]['data_headers']['fit_x_channel']
         self.plot_sweep_channels_selected = [self.plot_sweep_channels[0]]
         if 'fit_type' in self.data_points[0]['data_headers']:
             if self.data_points[0]['data_headers']['fit_type'] == 'KPFM':
@@ -780,6 +899,9 @@ class PlotData(object):
                     if self.data_points[0]['data_headers']['fit2_type'] == 'IZosc':
                         self.plot_sweep_channels_selected = ["log_current_(a)","fit2_log_current_(a)"]
                         self.plot_sweep_channels_selected2 = ["fit2_res_log_current_(a)"]
+            elif self.data_points[0]['data_headers']['fit_type'] == 'Gaussian':
+                self.plot_sweep_channels_selected = [self.data_points[0]['data_headers']['fit_y_channel'],self.data_points[0]['data_headers']['fitted_y_channel']]
+                self.plot_sweep_channels_selected2 = [self.data_points[0]['data_headers']['fit_res_y_channel']]
         self.plot_xaxis = self.plot_sweep_signal
         self.plot_sweep_signal2 = self.plot_sweep_signal
         self.plot_xaxis2 = self.plot_sweep_signal2
