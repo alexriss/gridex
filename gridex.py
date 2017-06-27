@@ -4,7 +4,7 @@ Grid-ex
 Grid Spectroscopy in an IPython environment
 
 Class to read and analyze Nanonis data files (grid spectroscopy) in binary or ASCII file format.
-Fitting KPFM (Δf vs. V) curves, IZ spectroscopy curves, as well as as multiple Gaussian peaks is implemented.
+Fitting KPFM (Δf vs. V) curves, IZ spectroscopy curves, multiple Gaussian peaks, linear polynomials and arbitrary functions is implemented.
 
 
 2015-2017, Alex Riss, GPL
