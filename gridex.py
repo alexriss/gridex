@@ -3,8 +3,8 @@ Grid-ex
 
 Grid Spectroscopy in an IPython environment
 
-Class to read Nanonis data files (grid spectroscopy).
-The class can read binary data (.3ds) or a list of ascii files (*.dat)
+Class to read and analyze Nanonis data files (grid spectroscopy) in binary or ASCII file format.
+Fitting KPFM (Δf vs. V) curves, IZ spectroscopy curves, as well as as multiple Gaussian peaks is implemented.
 
 
 2015-2017, Alex Riss, GPL
@@ -19,6 +19,25 @@ Populates the dictionaries:
 
 
         
+Example Usage:
+    import gridex
+    import ipywidgets
+    import IPython
+    %matplotlib notebook
+
+    griddata = gridex.GridData()
+    griddata.load_spectroscopy('data/KPFM_dimer_constz_grid2_*.dat', long_output=False, first_name='3', last_name='67')  # binary data can also be read
+    griddata.fit_KPFM(x_limit=[-0.8,0.2])  # we can set a x_limit for the fit
+    
+    # return interactive plot
+    channels = ['v*_(v)','df*_(hz)','fit_r2','fit_sse','amplitude_mean_(m)','amplitude_stddev_(m)']
+    gridplot = gridex.PlotData(griddata)
+    fig = gridplot.plot_channels(channels, num_rows=3, cmap='Blues_r')
+    IPython.display.display(gridplot.plot_options())
+    
+    
+
+
 Caveats:
     - binary values are read in in Big Endian format. I am not sure if that will change depending on the machine the Nanonis runs on
     - for ascii data square grids are assumed.
@@ -82,7 +101,17 @@ class GridData(object):
 
         
     def load_spectroscopy(self,fname,long_output=False,first_file=None,last_file=None):
-        """loads spectrscopy data, either the binary .3ds file or data from a number of .dat files. The optional parameters "first_file" and "last_file" can be used to further restrict the range for .dat files (substrings of the filename will work for those)."""
+        """Load spectrscopy data, either the binary .3ds file or data from a number of .dat files.
+        The optional parameters "first_file" and "last_file" can be used to further restrict the range for .dat files (substrings of the filename will work for those).
+        
+        Args:
+            fname (string): File name to open (wildcards can be used as specified in the python function glob.glob, e.g. "spectroscopy_4_*.dat").
+            long_output (boolean): Specifies whether to give detailed output.
+            first_file (string): Used to further restrict the filelist. Specifies the first file within the list of files (when using wildcards for fname). A substring is sufficient.
+            last-file (string): Used to further restrict the filelist. Specifies the last file within the list of files (when using wildcards for fname). A substring is sufficient.
+        Raises:
+            NotImpementedError: If opening files with unknown dextensions.
+        """
         ext = fname.rsplit(".",1)[-1]
         if  ext == "3ds":
             self.__init__()
@@ -91,13 +120,16 @@ class GridData(object):
             self.__init__()
             self._load_spectroscopy_dat(fname,long_output,first_file,last_file)
         else:
-            print("Error: Unknown file type \"%s\"." % ext)
-            return False
+            raise NotImplementedError("Error: Unknown file type \"%s\"." % ext)
         self.filename = fname
         
         
     def _load_spectroscopy_3ds(self,fname,long_output):
-        """load spectroscopy data from a .3ds file"""
+        """Load spectroscopy data from a .3ds file.
+        Args:
+            fname (string): File name to open.
+            long_output (boolean): Specifies whether to give detailed output.
+        """
         
         if PYTHON_VERSION>=3:
             f = open(fname, encoding='utf-8', errors='ignore')
@@ -189,7 +221,13 @@ class GridData(object):
         
         
     def _load_spectroscopy_dat(self,fnames,long_output,first_file=None,last_file=None):
-        """load spectroscopy data from a .dat files, the argument fname should be a unix-style list of files, i.e. "spectroscopy_4_*.dat"."""
+        """Load spectroscopy data from a .dat files.
+        Args:
+            fname (string): File name to open (wildcards can be used as specified in the python function glob.glob, e.g. "spectroscopy_4_*.dat").
+            long_output (boolean): Specifies whether to give detailed output.
+            first_file (string): Used to further restrict the filelist. Specifies the first file within the list of files (when using wildcards for fname). A substring is sufficient.
+            last-file (string): Used to further restrict the filelist. Specifies the last file within the list of files (when using wildcards for fname). A substring is sufficient.
+        """
         
         read_somedata = False
         if first_file:
@@ -203,9 +241,6 @@ class GridData(object):
                     first_file_found=True
                 else:
                     continue
-            if last_file:
-                if last_file in fname:
-                    break
                 
             if long_output: print("loading %s" % fname)
             f = open(fname)
@@ -229,7 +264,7 @@ class GridData(object):
                 # sometimes keys are used more than once, just append an underline in this case
                 while key in data_headers: key = key + "_"
 
-                if key_ in ['x_(m)', 'y_(m)', 'z_(m)','current_(a)','final_Z_(m)','input_4_(v)','lix_1_omega_(a)','liy_1_omega_(a)']:
+                if key_ in ['x_(m)', 'y_(m)', 'z_(m)','current_(a)','final_Z_(m)','input_4_(v)','lix_1_omega_(a)','liy_1_omega_(a)','z_offset_(m)', 'z_sweep_distance_(m)', 'settling_time_(s)', 'integration_time_(s)', 'final_z_(m)', 'temperature_afm_(v)', 'applied_voltage_measured_(v)', 'bias_(v)', 'phase_(deg)', 'amplitude_(m)', 'frequency_shift_(hz)', 'excitation_(v)']:
                     data_headers[key] = float(val)
                 else:
                     data_headers[key] = val
@@ -254,6 +289,11 @@ class GridData(object):
 
             files_read += 1
             f.close()
+            
+            if last_file:
+                if last_file in fname:
+                    break
+
 
             
         if not read_somedata:
@@ -270,7 +310,13 @@ class GridData(object):
             
             
     def _generate_3D_data(self,data_points):
-        """once the data has been read in from the files, this function generates a 3D numpy array holding all the data"""
+        """Generates a 3D numpy array holding all the data.
+            Args:
+                data_points: List of data_points (that include the channel data).
+
+            Returns:
+                3d numpy arrau: containing all the data for each point in one numpy array.
+        """
         
         data3D = np.zeros((len(data_points), len(self.channels), self.points))
         for i_data_point in range(len(data_points)):
@@ -627,6 +673,99 @@ class GridData(object):
                 self.data_points[i]['data_headers']['sigma_%d' % j] = popt[j*3+2]
 
 
+    def fit_arbitrary(self, x_channel='bias_(v)', y_channel='current_(a)', f=None, params=None, deg=1, x_limit=[], **kwargs):
+        """Fits arbitrary curves for eahc point in the data set.
+        Uses scipy.optimize.curve_fit. Adds 'fit_type' and 'fit_coeffs' to the data_headers.
+        
+        Args:
+            x_channel (string): name of channel to use for x-axis.
+            y_channel (string): name of channel to use for y-axis.
+            f (function): Any fit function that can be passed to scipy.optimize.curve_fit. If None, then a linear polyfit will be used (the argument deg should be specified then).
+            params (list): Parameters to use in the fit function.
+            deg (integerer): Degree of the fitting polynomial.
+            x_limit (tuple): Tuple with lower and upper x-limit, specifies whether to restrict the fitting for a range of x_values.
+            **kwargs: Extra keyword arguments to be passed to scipy.optimize.curve_fit or numpy.polyfit.
+          
+        Also extracts the 'fit_sse' (sum of squares due to error), and 'fit_r2' (the r squared value). If x_limit is specified, also fit_sse_fullrange and fit_r2_fullrange will be calculated to represent the values for the full x range.
+        These will be added to the data_header for each point.
+        Also adds the amplitude mean and standard deviation ('amplitude_mean_(m)' and 'amplitude_stddev_(m)') - if the data exists. Further the fitted line and the residuals are added to the data sweeps.
+        """
+        
+        # some sanity checks
+        p0names = self.data_points[0]['data'].dtype.names
+        for ch in [x_channel, y_channel]:
+            if not ch in p0names:
+                print("Error: Channel '%s' not found in the data." % ch)
+                return False
+        
+        for i,p in enumerate(self.data_points):
+            x = p['data'][x_channel]
+            y = p['data'][y_channel]
+            
+            if 'amplitude_[avg]_(m)' in p['data'].dtype.names:
+                self.data_points[i]['data_headers']['amplitude_mean_(m)'] = np.mean(p['data']['amplitude_[avg]_(m)'])
+                self.data_points[i]['data_headers']['amplitude_stddev_(m)'] = np.std(p['data']['amplitude_[avg]_(m)'])
+            elif 'amplitude_(m)' in p['data'].dtype.names:
+                self.data_points[i]['data_headers']['amplitude_mean_(m)'] = np.mean(p['data']['amplitude_(m)'])
+                self.data_points[i]['data_headers']['amplitude_stddev_(m)'] = np.std(p['data']['amplitude_(m)'])
+                
+            if len(x_limit)==2:  # set limit for fits
+                x_limit_i = [ (np.abs(x-x_limit[0])).argmin() , (np.abs(x-x_limit[1])).argmin()]
+                if x_limit_i[0] > x_limit_i[1]:
+                    x_limit_i[0], x_limit_i[1] = x_limit_i[1], x_limit_i[0]
+                self.data_points[i]['data_headers']['fit_x_limit_i_start'] = x[x_limit_i[0]]
+                self.data_points[i]['data_headers']['fit_x_limit_i_end'] = x[x_limit_i[1]]
+                x_fit = x[x_limit_i[0]:x_limit_i[1]+1]
+                y_fit = y[x_limit_i[0]:x_limit_i[1]+1]
+            else:
+                x_fit = x
+                y_fit = y
+            
+            if f == None:
+                popt = np.polyfit(x_fit, y_fit, deg=deg)
+                flin = np.poly1d(popt)
+                yhat = flin(x)
+                yhat_fit = flin(x_fit)
+                self.data_points[i]['data_headers']['fit_type'] = 'linear_degree_%s' % deg
+            else:
+                try:
+                    popt, pcov = scipy.optimize.curve_fit(f, x_fit, y_fit, **kwargs)
+                except RuntimeError:
+                    popt = initial_params
+                    print("Error in curve_fit for point %d." % i)
+                
+                yhat = f(x, *popt)
+                yhat_fit = f(x_fit, *popt)
+                self.data_points[i]['data_headers']['fit_type'] = f.__name__
+
+            ybar = np.sum(y)/len(y)
+            ssreg = np.sum((yhat-ybar)**2)
+            sstot = np.sum((y - ybar)**2)
+            sserr = np.sum((y - yhat)**2)
+            ybar_fit = np.sum(y_fit)/len(y_fit)
+            ssreg_fit = np.sum((yhat_fit-ybar_fit)**2)
+            sstot_fit = np.sum((y_fit - ybar_fit)**2)
+            sserr_fit = np.sum((y_fit - yhat_fit)**2)
+            
+            if 'fit_%s' % y_channel in self.data_points[i]['data'].dtype.names:
+                self.data_points[i]['data']['fit_%s' % y_channel] = yhat
+                self.data_points[i]['data']['fit_res_%s' % y_channel] = y - yhat  # residuals
+            else:
+                self.data_points[i]['data'] = recfunctions.append_fields(self.data_points[i]['data'],'fit_%s' % y_channel, yhat)
+                self.data_points[i]['data'] = recfunctions.append_fields(self.data_points[i]['data'],'fit_res_%s' % y_channel, y - yhat)  # residuals
+                
+            self.data_points[i]['data_headers']['fit_x_channel'] = x_channel
+            self.data_points[i]['data_headers']['fit_y_channel'] = y_channel
+            self.data_points[i]['data_headers']['fitted_y_channel'] = 'fit_%s' % y_channel
+            self.data_points[i]['data_headers']['fit_res_y_channel'] = 'fit_res_%s' % y_channel
+            self.data_points[i]['data_headers']['fit_coeffs'] = popt
+
+            self.data_points[i]['data_headers']['fit_r2'] = ssreg_fit / sstot_fit
+            self.data_points[i]['data_headers']['fit_sse'] = sserr_fit
+            self.data_points[i]['data_headers']['fit_r2_fullrange'] = ssreg / sstot   # _fullrange takes the full range for error calculation (i.e. not taking into account x_limit)
+            self.data_points[i]['data_headers']['fit_sse_fullrange'] = sserr
+            
+                
     def _string_simplify1(self,str):
         """simplifies a string (i.e. removes replaces space for "_", and makes it lowercase"""
         return str.replace(' ','_').lower()
@@ -887,6 +1026,10 @@ class PlotData(object):
                 self.plot_sweep_signal = 'z_(m)'
             elif self.data_points[0]['data_headers']['fit_type'] == 'Gaussian':
                 self.plot_sweep_signal = self.data_points[0]['data_headers']['fit_x_channel']
+            elif 'fit_x_channel' in self.data_points[0]['data_headers']:
+                self.plot_sweep_signal = self.data_points[0]['data_headers']['fit_x_channel']
+        else:
+            self.plot_sweep_signal = self.data_points[0]['data'].dtype.names[0]
         self.plot_sweep_channels_selected = [self.plot_sweep_channels[0]]
         if 'fit_type' in self.data_points[0]['data_headers']:
             if self.data_points[0]['data_headers']['fit_type'] == 'KPFM':
@@ -902,6 +1045,12 @@ class PlotData(object):
             elif self.data_points[0]['data_headers']['fit_type'] == 'Gaussian':
                 self.plot_sweep_channels_selected = [self.data_points[0]['data_headers']['fit_y_channel'],self.data_points[0]['data_headers']['fitted_y_channel']]
                 self.plot_sweep_channels_selected2 = [self.data_points[0]['data_headers']['fit_res_y_channel']]
+            elif 'fit_y_channel' in self.data_points[0]['data_headers']:
+                self.plot_sweep_channels_selected = [self.data_points[0]['data_headers']['fit_y_channel'],self.data_points[0]['data_headers']['fitted_y_channel']]
+                self.plot_sweep_channels_selected2 = [self.data_points[0]['data_headers']['fit_res_y_channel']]
+        else:
+            self.plot_sweep_channels_selected = [self.data_points[0]['data'].dtype.names[0]]
+            self.plot_sweep_channels_selected2 = [self.data_points[0]['data'].dtype.names[0]]
         self.plot_xaxis = self.plot_sweep_signal
         self.plot_sweep_signal2 = self.plot_sweep_signal
         self.plot_xaxis2 = self.plot_sweep_signal2
