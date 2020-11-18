@@ -19,4 +19,5 @@ Also check out the [example jupyter notebook](https://github.com/alexriss/gridex
 ## Related projects
 
 - [imag*ex*](https://github.com/alexriss/imagex): python scripts to load and display SPM images.
+- [SpmImages.jl](https://github.com/alexriss/SpmImages.jl): julia library to read and display SPM (scanning probe microscopy) images
 
