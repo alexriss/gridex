@@ -12,7 +12,7 @@ is implemented.
 
 An example output is shown here:
 
-![interactive output example](https://github.com/alexriss/gridex/raw/master/gridex_example_KPFM.png)
+![interactive output example](gridex_example_KPFM.png)
 
 Also check out the [example jupyter notebook](https://github.com/alexriss/gridex/blob/master/gridex_ipython_example.ipynb). The interactive controls are not displayed when rendering it, but will be available when running the notebook.
 
