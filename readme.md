@@ -18,6 +18,9 @@ Also check out the [example jupyter notebook](https://github.com/alexriss/gridex
 
 ## Related projects
 
-- [imag*ex*](https://github.com/alexriss/imagex): python scripts to load and display SPM images.
-- [SpmImages.jl](https://github.com/alexriss/SpmImages.jl): julia library to read and display SPM (scanning probe microscopy) images
+- [SpmImageTycoon.jl](https://github.com/alexriss/SpmImageTycoon.jl): App to organize SPM images and spectra.
+- [SpmImages.jl](https://github.com/alexriss/SpmImages.jl): Julia library to read and display SPM images.
+- [SpmSpectroscopy.jl](https://github.com/alexriss/SpmSpectroscopy.jl): Julia library to analyze scanning tunneling and atomic force spectroscopy data.
+- [SpmGrids.jl](https://github.com/alexriss/SpmGrids.jl): Julia library to read and analyze SPM grid spectroscopy.
+- [imag*ex*](https://github.com/alexriss/imagex): Python scripts to analyze scanning probe images.
 
